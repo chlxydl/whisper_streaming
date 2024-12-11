@@ -535,7 +535,7 @@ class VACOnlineASRProcessor(OnlineASRProcessor):
             model='silero_vad'
         )
         from whisper_streaming.silero_vad_iterator import FixedVADIterator
-        self.vac = FixedVADIterator(model)  # we use the default options there: 500ms silence, 100ms padding, etc.  
+        self.vac = FixedVADIterator(model, threshold=0.5)  # we use the default options there: 500ms silence, 100ms padding, etc.  
 
         self.logfile = self.online.logfile
         self.init()
@@ -583,6 +583,7 @@ class VACOnlineASRProcessor(OnlineASRProcessor):
                 send_audio = self.audio_buffer[beg:end]
                 self.online.init(offset=(beg+self.buffer_offset)/self.SAMPLING_RATE)
                 self.online.insert_audio_chunk(send_audio)
+                self.online.process_iter()
                 self.current_online_chunk_buffer_size += len(send_audio)
                 self.is_currently_final = True
                 self.clear_buffer()
@@ -597,17 +598,16 @@ class VACOnlineASRProcessor(OnlineASRProcessor):
                 self.buffer_offset += max(0,len(self.audio_buffer)-self.SAMPLING_RATE)
                 self.audio_buffer = self.audio_buffer[-self.SAMPLING_RATE:]
 
-
     def process_iter(self):
         if self.is_currently_final:
-            return self.finish()
+            return self.finish(), 'finish'
         elif self.current_online_chunk_buffer_size > self.SAMPLING_RATE*self.online_chunk_size:
             self.current_online_chunk_buffer_size = 0
             ret = self.online.process_iter()
-            return ret
+            return ret, 'mid'
         else:
-            print("no online update, only VAD", self.status, file=self.logfile)
-            return (None, None, "")
+            # print("no online update, only VAD", self.status, file=self.logfile)
+            return (None, None, ""), 'None'
 
     def finish(self):
         ret = self.online.finish()
